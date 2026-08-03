@@ -25,8 +25,9 @@ jobs:
       - id: find
         name: Find manual directories
         run: |
-          manuals=$(find . -mindepth 2 -maxdepth 2 -name 'main.tex' -printf '%h\n' \
-            | sed 's|^\./||' | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          manuals=$(find . -mindepth 1 -maxdepth 1 -type d -not -name '.*' -printf '%f\n' \
+            | while read -r d; do [ -f "$d/$d.tex" ] && printf '%s\n' "$d"; done \
+            | sort -u | jq -R -s -c 'split("\n")[:-1]')
           echo "manuals=$manuals" >> "$GITHUB_OUTPUT"
 
   build:
@@ -43,11 +44,11 @@ jobs:
       - name: Compile ${{ matrix.manual }}
         uses: dante-ev/latex-action@2026-A
         with:
-          root_file: main.tex
+          root_file: ${{ matrix.manual }}.tex
           working_directory: ${{ matrix.manual }}
 
-      - name: Rename PDF to manual name
-        run: mv "${{ matrix.manual }}/main.pdf" "${{ matrix.manual }}.pdf"
+      - name: Move PDF out of the manual directory
+        run: mv "${{ matrix.manual }}/${{ matrix.manual }}.pdf" "${{ matrix.manual }}.pdf"
 
       - uses: actions/upload-artifact@v4
         with:
