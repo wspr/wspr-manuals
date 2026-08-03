@@ -1,0 +1,66 @@
+name: Build manuals and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      manuals: ${{ steps.find.outputs.manuals }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: find
+        name: Find manual directories
+        run: |
+          manuals=$(find . -mindepth 2 -maxdepth 2 -name 'main.tex' -printf '%h\n' \
+            | sed 's|^\./||' | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "manuals=$manuals" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.manuals != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        manual: ${{ fromJson(needs.discover.outputs.manuals) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile ${{ matrix.manual }}
+        uses: dante-ev/latex-action@v2
+        with:
+          root_file: main.tex
+          working_directory: ${{ matrix.manual }}
+
+      - name: Rename PDF to manual name
+        run: mv "${{ matrix.manual }}/main.pdf" "${{ matrix.manual }}.pdf"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdf-${{ matrix.manual }}
+          path: ${{ matrix.manual }}.pdf
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all manual PDFs
+        uses: actions/download-artifact@v4
+        with:
+          path: site
+          pattern: pdf-*
+          merge-multiple: true
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
